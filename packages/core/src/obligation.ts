@@ -23,6 +23,7 @@ export type Actor = { type: "human" | "agent" | "system"; id: string };
 
 export type TransitionReason =
   | "manual"
+  | "agent_action"
   | "auto_progress"
   | "deadline_passed"
   | "response_received"
