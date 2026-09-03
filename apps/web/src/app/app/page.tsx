@@ -82,6 +82,24 @@ export default function Board() {
     }
   }
 
+  async function extractFromText() {
+    if (!household || !title.trim()) return;
+    try {
+      const res = await api.extract(title.trim());
+      const ex = res.extraction;
+      if (ex.action === "do_not_create") {
+        setError("Слишком мало уверенности — уточните формулировку");
+        return;
+      }
+      await api.createObligation(household.id, ex.title, ex.priority ?? "normal", ex.dueAt ?? undefined);
+      setTitle("");
+      setError(ex.action === "needs_review" ? "Захвачено с низкой уверенностью — проверьте статус" : null);
+      await refresh(household);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function move(ob: Obligation, to: string) {
     if (!household) return;
     try {

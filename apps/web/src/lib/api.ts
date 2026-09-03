@@ -30,6 +30,11 @@ export const api = {
   createHousehold: (name: string) =>
     req<Household>("/api/households", { method: "POST", body: JSON.stringify({ name }) }),
   listHouseholds: () => req<Household[]>("/api/households"),
+  extract: (text: string) =>
+    req<{ extraction: { title: string; priority?: string; dueAt: string | null; confidence: number; action: string } }>("/api/extract", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
   listObligations: (householdId: string) =>
     req<Obligation[]>(`/api/obligations?householdId=${householdId}`),
   createObligation: (householdId: string, title: string, priority: string, dueAt?: string) =>
