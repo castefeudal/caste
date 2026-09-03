@@ -13,6 +13,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sessions = pgTable("sessions", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id),
@@ -28,6 +37,7 @@ export const loginTokens = pgTable("login_tokens", {
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
 
 export const memberships = pgTable("memberships", {
   id: uuid("id").primaryKey().defaultRandom(),
