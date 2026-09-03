@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import { userFromRequest } from "./auth.js";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { transition, type Actor, type ObligationState } from "@caste/core";
-import { db, schema } from "../db.js";
+import { db } from "../db.js";
+import * as schema from "../schema.js";
 
 const createBody = z.object({
   householdId: z.string().uuid(),
@@ -24,6 +26,9 @@ const patchBody = z.object({
 
 export async function obligationsRoute(app: FastifyInstance): Promise<void> {
   app.post("/", async (req, reply) => {
+    const user = await userFromRequest(req);
+    if (!user) return reply.code(401).send({ error: "unauthorized" });
+    void user;
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
     const [household] = await db

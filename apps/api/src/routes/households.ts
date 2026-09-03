@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
+import { userFromRequest } from "./auth.js";
 import { z } from "zod";
-import { db, schema } from "../db.js";
+import { db } from "../db.js";
+import * as schema from "../schema.js";
 
 const createBody = z.object({
   name: z.string().min(1).max(120),
@@ -9,6 +11,9 @@ const createBody = z.object({
 
 export async function householdsRoute(app: FastifyInstance): Promise<void> {
   app.post("/", async (req, reply) => {
+    const user = await userFromRequest(req);
+    if (!user) return reply.code(401).send({ error: "unauthorized" });
+    void user;
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
     const [row] = await db.insert(schema.households).values({ name: parsed.data.name }).returning();

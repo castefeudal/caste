@@ -13,6 +13,13 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const sessions = pgTable("sessions", {
+  token: text("token").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const memberships = pgTable("memberships", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id),
