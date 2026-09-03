@@ -6,6 +6,7 @@ import { healthRoute } from "./routes/health.js";
 import { householdsRoute } from "./routes/households.js";
 import { authRoutes } from "./routes/auth.js";
 import { extractRoute } from "./routes/extract.js";
+import { ingestRoute } from "./routes/ingest.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -16,5 +17,6 @@ export function buildApp(): FastifyInstance {
   app.register(householdsRoute, { prefix: "/api/households" });
   app.register(authRoutes, { prefix: "/api/auth" });
   app.register(extractRoute, { prefix: "/api/extract" });
+  app.register(ingestRoute, { prefix: "/api/ingest" });
   return app;
 }

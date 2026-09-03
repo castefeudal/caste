@@ -93,3 +93,32 @@ describe("caste api", () => {
     expect(bad.statusCode).toBe(400);
   });
 });
+
+describe("ingest", () => {
+  it("accepts a forwarded email and creates a reviewed obligation", async () => {
+    const raw = [
+      "From: Billing <billing@isp.example>",
+      "To: family@caste.local",
+      "Subject: Счёт за интернет — оплатите до 20.09.2026",
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "Ваш счёт на 1500 руб. Оплатите до 20.09.2026.",
+      "",
+    ].join("\r\n");
+    const res = await authed({
+      method: "POST",
+      url: "/api/ingest/email",
+      payload: { raw },
+    });
+    expect([200, 201]).toContain(res.statusCode);
+    const body = res.json();
+    expect(body.provenance.source).toBe("email");
+    expect(body.obligation.title).toMatch(/интернет/i);
+    expect(body.obligation.status).toBe("needs_review");
+  });
+
+  it("rejects unauthenticated ingest", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/ingest/email", payload: { raw: "eHg=" } });
+    expect(res.statusCode).toBe(401);
+  });
+});

@@ -44,6 +44,19 @@ export const demoProvider: ExtractProvider = {
       const d = new Date(now);
       d.setDate(d.getDate() + (7 - d.getDay()));
       due = dueAt(d);
+    } else {
+      // Explicit dates: 20.09.2026, 20.09.26, 20.09
+      const dm = t.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/);
+      if (dm) {
+        const day = Number(dm[1]);
+        const month = Number(dm[2]);
+        let year = dm[3] ? Number(dm[3]) : now.getFullYear();
+        if (year < 100) year += 2000;
+        const d = new Date(Date.UTC(year, month - 1, day, 12));
+        if (!Number.isNaN(d.getTime()) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          due = dueAt(d);
+        }
+      }
     }
 
     const priority = has(/срочно|urgent|критичн|critical|штраф|penalt/)
