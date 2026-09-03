@@ -22,7 +22,8 @@
     "@caste/ai": "workspace:*",
     "nodemailer": "^6.9.16",
     "mailparser": "^3.7.2",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "stripe": "^17.5.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10",
