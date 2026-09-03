@@ -43,10 +43,19 @@ See `.env.example` for every variable; all integrations are optional.
   the current deploy token (lacks `workflow` scope). Enable locally with:
   `gh auth refresh -s workflow` and re-commit the file.
 
-## Planned, not yet built
+## Credential-gated features (code shipped, activates with keys)
 
-Email/calendar ingestion, push notifications, Stripe billing, LLM extraction
-providers (OpenAI/Anthropic behind the same ExtractProvider interface).
+| Feature | Code | Activates with |
+|---|---|---|
+| Magic-link login | `POST /api/auth/magic-link` → one-time token → session | `EMAIL_URL` (SMTP); without it the link is logged (demo driver) |
+| Google OAuth | `GET /api/auth/google` → callback → session | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` |
+| LLM extraction | OpenAI + Anthropic adapters behind `ExtractProvider`, demo fallback | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` |
+| Email ingestion | `POST /api/ingest/email` — RFC822 in, review-gated obligation out | `INGEST_TOKEN` for inbound webhooks |
+| Web Push | VAPID keys generated; `/api/push/*` live | already enabled in this deployment |
+| Stripe billing | checkout + signature-verified webhook | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` |
+
+Unconfigured features degrade honestly: `503` / `push_not_configured` /
+`billing_not_configured` — never a fake success.
 
 ## Structure
 
