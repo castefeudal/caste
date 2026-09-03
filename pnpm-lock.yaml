@@ -23,6 +23,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@caste/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@caste/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -94,6 +97,25 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/ai:
+    dependencies:
+      '@caste/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
 
   packages/core:
     dependencies:

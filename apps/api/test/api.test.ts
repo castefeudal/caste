@@ -74,6 +74,20 @@ describe("caste api", () => {
     expect(agent.statusCode).toBe(409);
   });
 
+  it("extracts obligation from text", async () => {
+    const res = await authed({ method: "POST", url: "/api/extract", payload: { text: "Оплатить страховку до завтра" } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { extraction: { priority: string; dueAt: string | null; action: string } };
+    expect(body.extraction.priority).toBe("high");
+    expect(body.extraction.dueAt).toBeTruthy();
+    expect(["auto_create", "needs_review", "do_not_create"]).toContain(body.extraction.action);
+  });
+
+  it("extract requires session", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/extract", payload: { text: "x" } });
+    expect(res.statusCode).toBe(401);
+  });
+
   it("validates input", async () => {
     const bad = await authed({ method: "POST", url: "/api/obligations", payload: { householdId: "nope" } });
     expect(bad.statusCode).toBe(400);
