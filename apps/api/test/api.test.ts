@@ -16,16 +16,32 @@ describe("caste api", () => {
   });
 
   it("creates, lists, transitions, rejects bad transitions", async () => {
+    const hh = await app.inject({
+      method: "POST",
+      url: "/api/households",
+      payload: { name: "Test Household" },
+    });
+    expect(hh.statusCode).toBe(201);
+    const householdId = hh.json().id;
+
+    const missing = await app.inject({
+      method: "POST",
+      url: "/api/obligations",
+      payload: { householdId: "00000000-0000-4000-8000-999999999999", title: "Ghost" },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error).toBe("household_not_found");
+
     const created = await app.inject({
       method: "POST",
       url: "/api/obligations",
-      payload: { householdId: HH, title: "Pay rent" },
+      payload: { householdId, title: "Pay rent" },
     });
     expect(created.statusCode).toBe(201);
     const ob = created.json();
     expect(ob.status).toBe("captured");
 
-    const list = await app.inject({ method: "GET", url: `/api/obligations?householdId=${HH}` });
+    const list = await app.inject({ method: "GET", url: `/api/obligations?householdId=${householdId}` });
     expect(list.statusCode).toBe(200);
     expect(list.json().length).toBeGreaterThan(0);
 

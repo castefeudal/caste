@@ -43,7 +43,7 @@ export interface Transition {
 /** Allowed transitions. Anything not listed is rejected — no free-form status writes. */
 const ALLOWED: Record<ObligationState, ObligationState[]> = {
   captured: ["needs_review", "active", "dismissed", "archived"],
-  needs_review: ["active", "dismissed", "archived"],
+  needs_review: ["active", "dismissed"],
   active: ["assigned", "scheduled", "in_progress", "waiting", "blocked", "action_required", "dismissed", "archived"],
   assigned: ["scheduled", "in_progress", "waiting", "blocked", "active", "dismissed", "archived"],
   scheduled: ["in_progress", "waiting", "blocked", "active", "dismissed", "archived"],
@@ -81,8 +81,13 @@ export function canTransition(
   if (to === "verified" && !t.evidenceId) {
     return new TransitionError(from, to, "verified requires evidenceId");
   }
-  if (t.actor.type === "agent" && to === "verified") {
-    return new TransitionError(from, to, "agents may not verify outcomes");
+  if (t.actor.type === "agent") {
+    if (from === "needs_review") {
+      return new TransitionError(from, to, "review is a human gate");
+    }
+    if (["verified", "resolved", "archived", "dismissed"].includes(to)) {
+      return new TransitionError(from, to, "agents may not enter terminal states");
+    }
   }
   return null;
 }

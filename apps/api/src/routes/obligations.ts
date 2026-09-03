@@ -26,6 +26,11 @@ export async function obligationsRoute(app: FastifyInstance): Promise<void> {
   app.post("/", async (req, reply) => {
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
+    const [household] = await db
+      .select({ id: schema.households.id })
+      .from(schema.households)
+      .where(eq(schema.households.id, parsed.data.householdId));
+    if (!household) return reply.code(404).send({ error: "household_not_found" });
     const [row] = await db
       .insert(schema.obligations)
       .values({
