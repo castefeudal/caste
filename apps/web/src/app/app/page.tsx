@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, type Household, type Obligation } from "@/lib/api";
 
 const COLUMNS = [
@@ -33,6 +34,7 @@ export default function Board() {
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState("normal");
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   const refresh = useCallback(async (hh: Household) => {
     try {
@@ -44,6 +46,11 @@ export default function Board() {
   }, []);
 
   useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/auth/me`, {
+      credentials: "include",
+    }).then((r) => {
+      if (r.status === 401) router.replace("/login");
+    });
     const saved = localStorage.getItem("caste-household");
     if (saved) {
       try {
