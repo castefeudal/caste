@@ -41,7 +41,7 @@ export async function ingestRoute(app: FastifyInstance) {
     let from = "";
     let text = "";
     try {
-      const mail = await simpleParser(parsed.data.raw);
+      const mail = await simpleParser(Buffer.from(parsed.data.raw, "base64"));
       subject = mail.subject ?? "";
       from = Array.isArray(mail.from?.value) && mail.from.value[0]?.address ? mail.from.value[0].address : "";
       text = mail.text ?? "";

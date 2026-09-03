@@ -108,7 +108,7 @@ describe("ingest", () => {
     const res = await authed({
       method: "POST",
       url: "/api/ingest/email",
-      payload: { raw },
+      payload: { raw: Buffer.from(raw).toString("base64") },
     });
     expect([200, 201]).toContain(res.statusCode);
     const body = res.json();
