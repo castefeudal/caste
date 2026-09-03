@@ -1,0 +1,47 @@
+# CASTE — local production-shaped stack.
+# Usage: docker compose -f infra/docker-compose.yml up --build
+# Postgres 15 + API (Fastify) + Web (Next.js). No external services required.
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: caste
+      POSTGRES_PASSWORD: caste
+      POSTGRES_DB: caste
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caste"]
+      interval: 3s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      DATABASE_URL: postgres://caste:caste@db:5432/caste
+      PORT: "4000"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

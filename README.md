@@ -30,11 +30,23 @@ See `.env.example` for every variable; all integrations are optional.
 | Agent integration (MCP stdio server)                      | ✅ `@caste/mcp`, 3 tools |
 | Demo seed (idempotent)                                    | ✅ `pnpm db:seed` |
 
+## Status: what works today
+
+- Passwordless auth: POST /api/auth/login -> httpOnly session cookie (30d, sha256-hashed).
+  Writes require a session -> 401. Magic-link email / OAuth are planned, credential-gated.
+- AI extraction (demo provider): POST /api/extract turns text into a structured
+  obligation draft, scored through the confidence policy. LLM providers are
+  planned; the demo provider is deterministic and never hallucinates.
+- Docker: `docker compose -f infra/docker-compose.yml up --build` runs
+  Postgres 15 + API + Web with schema push on boot.
+- CI: workflow exists at `.github/workflows/ci.yml` but cannot be pushed with
+  the current deploy token (lacks `workflow` scope). Enable locally with:
+  `gh auth refresh -s workflow` and re-commit the file.
+
 ## Planned, not yet built
 
-Auth (Google OAuth / email), AI extraction providers, email/calendar ingestion,
-push notifications, Stripe billing, Docker infra, CI (blocked: deploy token
-lacks `workflow` scope — see `.github/workflows/ci.yml` kept locally).
+Email/calendar ingestion, push notifications, Stripe billing, LLM extraction
+providers (OpenAI/Anthropic behind the same ExtractProvider interface).
 
 ## Structure
 
