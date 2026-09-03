@@ -20,8 +20,7 @@ async function main() {
     [HOUSEHOLD, "Семья Ивановых"],
   );
   await pool.query(
-    `INSERT INTO users (id, email, name) VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO NOTHING`,
+    `INSERT INTO users (id, email, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
     [USER, "anna@caste.example", "Анна"],
   );
   await pool.query(
@@ -38,7 +37,11 @@ async function main() {
   for (const [title, priority, status, dueAt] of obligations) {
     await pool.query(
       `INSERT INTO obligations (household_id, title, priority, status, due_at)
-       VALUES ($1, $2, $3, $4, $5)`,
+       SELECT $1, $2, $3, $4, $5
+       WHERE NOT EXISTS (
+         SELECT 1 FROM obligations
+         WHERE household_id = $1 AND title = $2 AND status <> 'archived'
+       )`,
       [HOUSEHOLD, title, priority, status, dueAt],
     );
   }
