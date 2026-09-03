@@ -2,9 +2,11 @@
   "name": "caste",
   "private": true,
   "version": "1.0.0",
-  "description": "CASTE — Shared Life OS. From obligation to outcome.",
+  "description": "CASTE \u2014 Shared Life OS. From obligation to outcome.",
   "packageManager": "pnpm@10.34.5",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -15,10 +17,9 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
-    "db:migrate": "pnpm --filter @caste/api db:migrate",
     "db:seed": "tsx scripts/seed.ts",
     "demo": "pnpm --filter @caste/api dev & pnpm --filter @caste/web dev & wait",
-    "agent:demo": "tsx examples/agent-client/index.ts"
+    "db:push": "pnpm --filter @caste/api db:push"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
