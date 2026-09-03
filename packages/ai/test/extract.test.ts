@@ -48,3 +48,31 @@ describe("demo extractor", () => {
     expect(e.title.length).toBeLessThanOrEqual(280);
   });
 });
+
+describe("providers", () => {
+  it("resolveProvider falls back to demo without keys", async () => {
+    const mod = await import("../src/providers.js");
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_PROVIDER;
+    expect(mod.resolveProvider().name).toBe("demo");
+  });
+
+  it("resolveProvider picks configured provider", async () => {
+    const mod = await import("../src/providers.js");
+    process.env.OPENAI_API_KEY = "sk-test";
+    expect(mod.resolveProvider().name).toBe("openai");
+    delete process.env.OPENAI_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    expect(mod.resolveProvider().name).toBe("anthropic");
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("extractWithFallback degrades to demo on provider failure", async () => {
+    const mod = await import("../src/providers.js");
+    process.env.OPENAI_API_KEY = "sk-test";
+    const res = await mod.extractWithFallback("нет обязательства");
+    expect(res.matchedBy).toBe("demo:rules");
+    delete process.env.OPENAI_API_KEY;
+  });
+});
