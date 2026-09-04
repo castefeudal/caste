@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "caste": {
+      "command": "pnpm",
+      "args": ["--filter", "@caste/mcp", "start"],
+      "env": {
+        "DATABASE_URL": "postgresql://caste:caste@localhost:5432/caste",
+        "CASTE_AGENT_TOKEN": "caste_ВСТАВЬ_ТОКЕН_СЮДА"
+      }
+    }
+  }
+}
