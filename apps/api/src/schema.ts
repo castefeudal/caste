@@ -25,6 +25,16 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const agentTokens = pgTable("agent_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  householdId: uuid("household_id").notNull().references(() => households.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
 export const sessions = pgTable("sessions", {
   token: text("token").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id),

@@ -3,6 +3,17 @@ import * as store from "./store.js";
 
 const AGENT: Actor = { type: "agent", id: "mcp-agent" };
 
+/** Resolve the household from the bound agent token. Throws if not bound. */
+async function householdId(): Promise<string> {
+  if (process.env.CASTE_AGENT_TOKEN) {
+    const id = await store.resolveHousehold(process.env.CASTE_AGENT_TOKEN);
+    if (id) return id;
+  }
+  throw new Error(
+    "no_household: set CASTE_AGENT_TOKEN to a token from POST /api/agent/tokens (it binds the MCP server to one household)",
+  );
+}
+
 export const TOOL_DEFS = [
   {
     name: "caste_list_obligations",
@@ -11,9 +22,9 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        householdId: { type: "string", description: "Household UUID" },
+        householdId: { type: "string", description: "Optional household UUID; defaults to the one bound by CASTE_AGENT_TOKEN" },
       },
-      required: ["householdId"],
+      required: [],
     },
   },
   {
@@ -23,12 +34,12 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        householdId: { type: "string" },
+        householdId: { type: "string", description: "Optional; defaults to CASTE_AGENT_TOKEN's household" },
         title: { type: "string", maxLength: 280 },
         priority: { type: "string", enum: ["low", "normal", "high", "critical"] },
         dueAt: { type: "string", description: "ISO 8601 datetime, optional" },
       },
-      required: ["householdId", "title"],
+      required: ["title"],
     },
   },
   {
@@ -58,7 +69,7 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]:
 export async function callTool(name: string, args: Record<string, JsonValue>): Promise<JsonValue> {
   switch (name) {
     case "caste_list_obligations": {
-      const rows = await store.listObligations(String(args.householdId));
+      const rows = await store.listObligations(String(args.householdId ?? (await householdId())));
       return rows.map((r) => ({
         id: r.id,
         title: r.title,
@@ -68,12 +79,12 @@ export async function callTool(name: string, args: Record<string, JsonValue>): P
       }));
     }
     case "caste_capture": {
-      const householdId = String(args.householdId);
-      if (!(await store.householdExists(householdId))) {
-        throw new Error(`household_not_found: ${householdId}`);
+      const hid = String(args.householdId ?? (await householdId()));
+      if (!(await store.householdExists(hid))) {
+        throw new Error(`household_not_found: ${hid}`);
       }
       const row = await store.createObligation({
-        householdId,
+        householdId: hid,
         title: String(args.title),
         ...(args.priority ? { priority: String(args.priority) } : {}),
         dueAt: args.dueAt ? String(args.dueAt) : null,

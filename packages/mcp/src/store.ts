@@ -1,8 +1,18 @@
+import { createHash } from "node:crypto";
 import { Pool } from "pg";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL ?? "postgres://caste:caste@localhost:5432/caste",
 });
+
+export async function resolveHousehold(agentToken: string): Promise<string | null> {
+  const hash = createHash("sha256").update(agentToken).digest("hex");
+  const { rows } = await pool.query<{ household_id: string }>(
+    "SELECT household_id FROM agent_tokens WHERE token_hash = $1 AND revoked_at IS NULL",
+    [hash],
+  );
+  return rows[0]?.household_id ?? null;
+}
 
 export interface ObligationRow {
   id: string;

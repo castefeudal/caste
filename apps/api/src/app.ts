@@ -9,6 +9,7 @@ import { extractRoute } from "./routes/extract.js";
 import { ingestRoute } from "./routes/ingest.js";
 import { pushRoute } from "./routes/push.js";
 import { billingRoute } from "./routes/billing.js";
+import { agentTokensRoute } from "./routes/agents.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -22,5 +23,6 @@ export function buildApp(): FastifyInstance {
   app.register(ingestRoute, { prefix: "/api/ingest" });
   app.register(pushRoute, { prefix: "/api/push" });
   app.register(billingRoute, { prefix: "/api/billing" });
+  app.register(agentTokensRoute, { prefix: "/api/agent" });
   return app;
 }
