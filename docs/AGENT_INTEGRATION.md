@@ -18,17 +18,36 @@ anything through integration that it could not do in the product.
 
 Package: `packages/mcp` (server name: `caste-mcp`).
 
+### Setup (agent-token binding)
+
+An external agent is bound to exactly one household via an **agent token**:
+
+1. As a human user, log into the web app and issue a token:
+   `POST /api/agent/tokens` with `{ "name": "hermes" }` (session cookie required).
+   The plaintext token `caste_...` is returned **exactly once** - only its sha256
+   hash is stored server-side.
+2. Give the MCP server the token via `CASTE_AGENT_TOKEN`. It resolves to the
+   household on every call, so tools never need a `householdId` argument:
+
 ```json
 {
   "mcpServers": {
     "caste": {
       "command": "pnpm",
       "args": ["--filter", "@caste/mcp", "start"],
-      "env": { "DATABASE_URL": "postgresql://caste:caste@localhost:5432/caste" }
+      "env": {
+        "DATABASE_URL": "postgresql://caste:caste@localhost:5432/caste",
+        "CASTE_AGENT_TOKEN": "caste_..."
+      }
     }
   }
 }
 ```
+
+`GET /api/agent/me` with `Authorization: Bearer caste_...` confirms the binding
+(`{ householdId, tokenId }`). Revoking the token (DELETE `/api/agent/tokens/:id`)
+cuts the agent off immediately. `lastUsedAt` on the token row gives the human
+visibility into agent activity.
 
 ### Tools
 
@@ -57,6 +76,10 @@ Base: `http://localhost:4000` (Fastify, `apps/api`).
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
 | `GET` | `/api/health` | Liveness. |
+| `POST` | `/api/agent/tokens` | Issue agent token `{ name }` (session). Returns plaintext `caste_...` once. |
+| `GET` | `/api/agent/tokens` | List agent tokens (no secrets). |
+| `GET` | `/api/agent/me` | Bearer `caste_...` -> `{ householdId, tokenId }`. |
+| `DELETE` | `/api/agent/tokens/:id` | Revoke a token. |
 | `POST` | `/api/households` | Create household `{ name }`. |
 | `GET` | `/api/households` | List households. |
 | `POST` | `/api/obligations` | `{ householdId, title, priority?, dueAt?, assignedTo? }` → `201`, status `captured`. Unknown household → `404 household_not_found`. |
