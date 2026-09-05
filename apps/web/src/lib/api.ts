@@ -6,6 +6,7 @@ export type Obligation = {
   title: string;
   status: string;
   priority: string;
+  risk: "now" | "soon" | "later";
   dueAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -17,6 +18,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    credentials: "include",
     cache: "no-store",
   });
   if (!res.ok) {
@@ -47,9 +49,13 @@ export const api = {
     status: string,
     actorType: "human" | "agent" = "human",
     actorId = "human-1",
+    reason?: string,
   ) =>
     req<Obligation>(`/api/obligations/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ actorType, actorId, status }),
+      body: JSON.stringify({ actorType, actorId, status, reason }),
     }),
+  logout: async () => {
+    await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" });
+  },
 };
