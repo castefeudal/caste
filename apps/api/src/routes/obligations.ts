@@ -305,4 +305,65 @@ export async function obligationsRoute(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: { code: "INVALID_TRANSITION", message: (err as Error).message } });
     }
   });
+
+  /**
+   * Attach evidence to an obligation. Humans only — agents may not manufacture
+   * proof of an outcome, and `verified` consumes a human-created evidence row.
+   */
+  app.post("/:id/evidence", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z
+      .object({
+        kind: z.enum(["note", "url", "receipt", "document", "photo", "external_confirmation"]).default("note"),
+        value: z.string().min(1).max(4000),
+      })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: { code: "INVALID_BODY", detail: body.error.flatten() } });
+
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
+    if (principal.kind !== "human") {
+      return reply.code(403).send({
+        error: { code: "HUMAN_ONLY", message: "only a human may attach evidence of an outcome" },
+      });
+    }
+
+    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id)).limit(1);
+    if (!current) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    const { canAccessHousehold } = await import("../lib/principal.js");
+    if (!(await canAccessHousehold(principal, current.householdId))) {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
+
+    const [row] = await db
+      .insert(schema.evidence)
+      .values({
+        householdId: current.householdId,
+        obligationId: current.id,
+        kind: body.data.kind,
+        value: body.data.value,
+        createdByKind: "human",
+        createdById: principal.userId,
+      })
+      .returning();
+    return reply.code(201).send(row);
+  });
+
+  /** Evidence list for an obligation (household-scoped). */
+  app.get("/:id/evidence", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
+    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id)).limit(1);
+    if (!current) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    const { canAccessHousehold } = await import("../lib/principal.js");
+    if (!(await canAccessHousehold(principal, current.householdId))) {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
+    const rows = await db
+      .select()
+      .from(schema.evidence)
+      .where(eq(schema.evidence.obligationId, id));
+    return rows;
+  });
 }

@@ -44,16 +44,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ householdId, title, priority, dueAt: dueAt || undefined }),
     }),
-  transition: (
-    id: string,
-    status: string,
-    actorType: "human" | "agent" = "human",
-    actorId = "human-1",
-    reason?: string,
-  ) =>
-    req<Obligation>(`/api/obligations/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ actorType, actorId, status, reason }),
+  transition: (id: string, to: string, reason?: string, evidenceId?: string) =>
+    req<Obligation>(`/api/obligations/${id}/transitions`, {
+      method: "POST",
+      body: JSON.stringify({ to, reason: reason || "manual", ...(evidenceId ? { evidenceId } : {}) }),
+    }),
+  addEvidence: (id: string, value: string, kind = "note") =>
+    req<{ id: string }>(`/api/obligations/${id}/evidence`, {
+      method: "POST",
+      body: JSON.stringify({ value, kind }),
     }),
   logout: async () => {
     await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" });

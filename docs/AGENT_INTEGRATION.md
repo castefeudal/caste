@@ -85,7 +85,10 @@ Base: `http://localhost:4000` (Fastify, `apps/api`).
 | `POST` | `/api/obligations` | `{ householdId, title, priority?, dueAt?, assignedTo? }` → `201`, status `captured`. Unknown household → `404 household_not_found`. |
 | `GET` | `/api/obligations?householdId=…` | List for household. |
 | `GET` | `/api/obligations/:id` | Single obligation. |
-| `PATCH` | `/api/obligations/:id` | `{ actorType, actorId, status?, priority?, dueAt?, title?, assignedTo? }`. Illegal transition → `409`. |
+| `PATCH` | `/api/obligations/:id` | Edit fields: `{ title?, summary?, priority?, dueAt?, assignedTo? }`. |
+| `POST` | `/api/obligations/:id/transitions` | State machine: `{ to, reason?, evidenceId? }`. Actor identity comes from the auth context (never the body). Illegal transition → `409`; agent attempting terminal/verified → `403`/`409`. |
+| `POST` | `/api/obligations/:id/evidence` | Attach evidence `{ value, kind? }` (human session only) → `201` with the evidence row. |
+| `GET` | `/api/obligations/:id/evidence` | List evidence rows for an obligation (household-scoped). |
 | `DELETE` | `/api/obligations/:id` | Archive via the state machine (not a raw write). |
 
 ## State machine (reference)

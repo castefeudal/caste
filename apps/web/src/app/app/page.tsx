@@ -157,7 +157,12 @@ export default function Board() {
     if (!household) return;
     setBusy(true);
     try {
-      await api.transition(ob.id, to, "human", `human:${household.id}`, reason);
+      let evidenceId: string | undefined;
+      if (to === "verified") {
+        const ev = await api.addEvidence(ob.id, reason || "Подтверждено владельцем");
+        evidenceId = ev.id;
+      }
+      await api.transition(ob.id, to, reason, evidenceId);
       await refresh(household);
       setReviewTarget(null);
       setReviewReason("");
