@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Pool } from "pg";
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL ?? "postgres://caste:caste@localhost:5432/caste",
+  connectionString: process.env.DATABASE_URL ?? process.env.CASTE_DB_URL ?? "postgres://caste:caste@localhost:5432/caste",
 });
 
 export async function resolveHousehold(agentToken: string): Promise<string | null> {

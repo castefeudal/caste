@@ -23,7 +23,7 @@ async function hashOf(token: string) {
 beforeAll(async () => {
   const email = await uniqueEmail();
   const { rows: userRows } = await pool.query<{ id: string }>(
-    "INSERT INTO users (email) VALUES ($1) RETURNING id",
+    "INSERT INTO users (email, name) VALUES ($1, 'MCP Test') RETURNING id",
     [email],
   );
   const userId = userRows[0].id;
