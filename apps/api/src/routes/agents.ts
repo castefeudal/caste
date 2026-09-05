@@ -5,7 +5,11 @@ import { z } from "zod";
 import { db, schema } from "../db.js";
 import { hashToken, userFromRequest } from "./auth.js";
 
-const createBody = z.object({ name: z.string().min(1).max(80) });
+const createBody = z.object({
+  name: z.string().min(1).max(80),
+  // Optional explicit binding; defaults to the caller's oldest membership.
+  householdId: z.string().uuid().optional(),
+});
 
 export async function agentTokensRoute(app: FastifyInstance) {
   /** Issue a bearer token that binds an external agent to one household. */
@@ -16,12 +20,18 @@ export async function agentTokensRoute(app: FastifyInstance) {
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
 
-    const [membership] = await db
+    const memberships = await db
       .select()
       .from(schema.memberships)
-      .where(eq(schema.memberships.userId, user.id))
-      .limit(1);
-    if (!membership) return reply.code(422).send({ error: "no_household", hint: "create a household first" });
+      .where(eq(schema.memberships.userId, user.id));
+    if (memberships.length === 0)
+      return reply.code(422).send({ error: "no_household", hint: "create a household first" });
+    let membership = memberships[0]!;
+    if (parsed.data.householdId) {
+      const chosen = memberships.find((m) => m.householdId === parsed.data.householdId);
+      if (!chosen) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "household not found" } });
+      membership = chosen;
+    }
 
     const token = `caste_${randomBytes(24).toString("hex")}`;
     const [row] = await db
