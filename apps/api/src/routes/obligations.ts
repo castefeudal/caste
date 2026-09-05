@@ -1,123 +1,308 @@
 import type { FastifyInstance } from "fastify";
-import { userFromRequest } from "./auth.js";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { transition, type Actor, type ObligationState } from "@caste/core";
+import { canTransition, transition, type Actor, type ObligationState, OBLIGATION_STATES } from "@caste/core";
 import { db } from "../db.js";
 import * as schema from "../schema.js";
+import { requireHouseholdMember, requirePrincipal } from "../lib/authz.js";
+import type { Principal } from "../lib/principal.js";
+
+const STATES = z.enum(OBLIGATION_STATES);
+const PRIORITIES = z.enum(["low", "normal", "high", "critical"]);
+const RISKS = z.enum(["none", "financial", "medical", "legal", "privacy", "social", "irreversible"]);
 
 const createBody = z.object({
   householdId: z.string().uuid(),
   title: z.string().min(1).max(280),
-  priority: z.enum(["low", "normal", "high", "critical"]).default("normal"),
+  summary: z.string().max(4000).optional(),
+  priority: PRIORITIES.default("normal"),
+  risk: RISKS.default("none"),
   dueAt: z.string().datetime().optional(),
   assignedTo: z.string().uuid().nullish(),
+  source: z.string().max(40).optional(),
 });
 
 const patchBody = z.object({
-  actorType: z.enum(["human", "agent"]).default("human"),
-  actorId: z.string().min(1),
-  status: z.enum(["captured","needs_review","active","assigned","scheduled","in_progress","waiting","blocked","action_required","verification_pending","verified","resolved","dismissed","archived"]).optional(),
-  priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+  title: z.string().min(1).max(280).optional(),
+  summary: z.string().max(4000).nullable().optional(),
+  priority: PRIORITIES.optional(),
   dueAt: z.string().datetime().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
-  title: z.string().min(1).max(280).optional(),
 });
+
+const listQuery = z.object({
+  householdId: z.string().uuid(),
+  state: STATES.optional(),
+  priority: PRIORITIES.optional(),
+  risk: RISKS.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+function actorOf(p: Principal): Actor {
+  switch (p.kind) {
+    case "human":
+      return { type: "human", id: p.userId };
+    case "agent":
+      return { type: "agent", id: p.tokenId };
+    case "system":
+      return { type: "system", id: p.service };
+  }
+}
+
+/** Append-only transition event. Never write status without one. */
+async function recordEvent(input: {
+  householdId: string;
+  obligationId: string;
+  fromState: string;
+  toState: string;
+  principal: Principal;
+  reason: string;
+  evidenceId?: string | null;
+}): Promise<void> {
+  await db.insert(schema.obligationEvents).values({
+    householdId: input.householdId,
+    obligationId: input.obligationId,
+    fromState: input.fromState,
+    toState: input.toState,
+    actorKind: input.principal.kind,
+    actorId:
+      input.principal.kind === "human"
+        ? input.principal.userId
+        : input.principal.kind === "agent"
+          ? input.principal.tokenId
+          : input.principal.service,
+    reason: input.reason,
+    evidenceId: input.evidenceId ?? null,
+  });
+}
 
 export async function obligationsRoute(app: FastifyInstance): Promise<void> {
   app.post("/", async (req, reply) => {
-    const user = await userFromRequest(req);
-    if (!user) return reply.code(401).send({ error: "unauthorized" });
-    void user;
     const parsed = createBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
-    const [household] = await db
-      .select({ id: schema.households.id })
-      .from(schema.households)
-      .where(eq(schema.households.id, parsed.data.householdId));
-    if (!household) return reply.code(404).send({ error: "household_not_found" });
+    if (!parsed.success) return reply.code(400).send({ error: { code: "INVALID_BODY", detail: parsed.error.flatten() } });
+    const principal = await requireHouseholdMember(req, reply, parsed.data.householdId);
+    if (!principal) return;
+
     const [row] = await db
       .insert(schema.obligations)
       .values({
         householdId: parsed.data.householdId,
         title: parsed.data.title,
+        summary: parsed.data.summary ?? null,
         priority: parsed.data.priority,
+        risk: parsed.data.risk,
         dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
         assignedTo: parsed.data.assignedTo ?? null,
+        source: parsed.data.source ?? null,
+        createdByKind: principal.kind,
+        createdById: principal.kind === "human" ? principal.userId : principal.kind === "agent" ? principal.tokenId : principal.service,
       })
       .returning();
+    if (!row) return reply.code(500).send({ error: { code: "CREATE_FAILED", message: "insert failed" } });
+    await recordEvent({
+      householdId: row.householdId,
+      obligationId: row.id,
+      fromState: row.status,
+      toState: row.status,
+      principal,
+      reason: "manual",
+    });
     return reply.code(201).send(row);
   });
 
-  app.get("/", async (req) => {
-    const q = z.object({ householdId: z.string().uuid() }).parse(req.query);
+  app.get("/", async (req, reply) => {
+    const q = listQuery.safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: { code: "INVALID_QUERY", detail: q.error.flatten() } });
+    const principal = await requireHouseholdMember(req, reply, q.data.householdId);
+    if (!principal) return;
+
+    const conditions = [eq(schema.obligations.householdId, q.data.householdId)];
+    if (q.data.state) conditions.push(eq(schema.obligations.status, q.data.state));
+    if (q.data.priority) conditions.push(eq(schema.obligations.priority, q.data.priority));
+    if (q.data.risk) conditions.push(eq(schema.obligations.risk, q.data.risk));
+
     return db
       .select()
       .from(schema.obligations)
-      .where(eq(schema.obligations.householdId, q.householdId))
-      .orderBy(desc(schema.obligations.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(schema.obligations.createdAt))
+      .limit(q.data.limit)
+      .offset(q.data.offset);
   });
 
   app.get("/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const [row] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id));
-    if (!row) return reply.code(404).send({ error: "not_found" });
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
+    const ids = principal.kind === "agent" ? [principal.householdId] : principal.kind === "human" ? undefined : [];
+    const rows = await db
+      .select()
+      .from(schema.obligations)
+      .where(
+        ids
+          ? and(eq(schema.obligations.id, id), inArray(schema.obligations.householdId, ids))
+          : eq(schema.obligations.id, id),
+      )
+      .limit(50);
+    const row = rows.find((r) => r.id === id);
+    if (!row) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    if (principal.kind === "human" && !(await import("../lib/principal.js").then((m) => m.canAccessHousehold(principal, row.householdId)))) {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
     return row;
   });
 
+  /** Resource edit — fields only. State changes must go through /transitions. */
   app.patch("/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = patchBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_body", detail: parsed.error.flatten() });
-    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id));
-    if (!current) return reply.code(404).send({ error: "not_found" });
+    if (!parsed.success) return reply.code(400).send({ error: { code: "INVALID_BODY", detail: parsed.error.flatten() } });
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
 
-    const actor: Actor = { type: parsed.data.actorType, id: parsed.data.actorId };
-    const updates: Partial<typeof schema.obligations.$inferInsert> = { updatedAt: new Date() };
-
-    if (parsed.data.status && parsed.data.status !== current.status) {
-      try {
-        const currentStatus = current.status as ObligationState;
-        const next = transition(currentStatus, {
-          from: currentStatus,
-          to: parsed.data.status,
-          actor,
-          reason: parsed.data.actorType === "agent" ? "agent_action" : "manual",
-        });
-        updates.status = next;
-      } catch (err) {
-        return reply.code(409).send({ error: "invalid_transition", message: (err as Error).message });
+    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id)).limit(1);
+    if (!current) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    if (current.householdId !== (principal.kind === "agent" ? principal.householdId : current.householdId) && principal.kind === "agent") {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
+    if (principal.kind === "human") {
+      const { canAccessHousehold } = await import("../lib/principal.js");
+      if (!(await canAccessHousehold(principal, current.householdId))) {
+        return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
       }
     }
-    if (parsed.data.priority) updates.priority = parsed.data.priority;
+
+    const updates: Partial<typeof schema.obligations.$inferInsert> = { updatedAt: new Date() };
+    if (parsed.data.title !== undefined) updates.title = parsed.data.title;
+    if (parsed.data.summary !== undefined) updates.summary = parsed.data.summary;
+    if (parsed.data.priority !== undefined) updates.priority = parsed.data.priority;
     if (parsed.data.dueAt !== undefined) updates.dueAt = parsed.data.dueAt ? new Date(parsed.data.dueAt) : null;
     if (parsed.data.assignedTo !== undefined) updates.assignedTo = parsed.data.assignedTo;
-    if (parsed.data.title) updates.title = parsed.data.title;
 
     const [row] = await db.update(schema.obligations).set(updates).where(eq(schema.obligations.id, id)).returning();
     return row;
   });
 
+  /**
+   * State machine endpoint. Actor identity comes from the auth context, never
+   * the body. Agents cannot enter needs_review (human gate), terminal states,
+   * or verified — enforced by @caste/core and re-checked here.
+   */
+  app.post("/:id/transitions", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z
+      .object({
+        to: STATES,
+        reason: z.string().max(60).default("manual"),
+        evidenceId: z.string().uuid().optional(),
+      })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: { code: "INVALID_BODY", detail: body.error.flatten() } });
+
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
+
+    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id)).limit(1);
+    if (!current) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    if (principal.kind === "agent" && current.householdId !== principal.householdId) {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
+    if (principal.kind === "human") {
+      const { canAccessHousehold } = await import("../lib/principal.js");
+      if (!(await canAccessHousehold(principal, current.householdId))) {
+        return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+      }
+    }
+
+    // verified is human-only and requires evidence owned by this household.
+    if (body.data.to === "verified") {
+      if (principal.kind !== "human") {
+        return reply.code(403).send({
+          error: { code: "HUMAN_VERIFICATION_REQUIRED", message: "only a human may confirm an outcome" },
+        });
+      }
+      if (!body.data.evidenceId) {
+        return reply.code(400).send({ error: { code: "EVIDENCE_REQUIRED", message: "verified requires evidenceId" } });
+      }
+      const [ev] = await db.select().from(schema.evidence).where(eq(schema.evidence.id, body.data.evidenceId)).limit(1);
+      if (!ev || ev.obligationId !== current.id || ev.householdId !== current.householdId) {
+        return reply.code(404).send({ error: { code: "EVIDENCE_NOT_FOUND", message: "evidence not found for this obligation" } });
+      }
+    }
+
+    const actor = actorOf(principal);
+    const transitionArg = {
+      actor,
+      reason: body.data.reason as never,
+      ...(body.data.evidenceId ? { evidenceId: body.data.evidenceId } : {}),
+    };
+    const err = canTransition(current.status as ObligationState, body.data.to, transitionArg);
+    if (err) {
+      return reply.code(409).send({ error: { code: "INVALID_TRANSITION", message: err.message } });
+    }
+
+    const next = transition(current.status as ObligationState, {
+      from: current.status as ObligationState,
+      to: body.data.to,
+      ...transitionArg,
+    });
+
+    const [row] = await db
+      .update(schema.obligations)
+      .set({ status: next, updatedAt: new Date() })
+      .where(eq(schema.obligations.id, id))
+      .returning();
+    await recordEvent({
+      householdId: current.householdId,
+      obligationId: id,
+      fromState: current.status,
+      toState: next,
+      principal,
+      reason: body.data.reason,
+      evidenceId: body.data.evidenceId ?? null,
+    });
+    return row;
+  });
+
+  /** Soft-delete: archive via the state machine, never a raw DELETE. */
   app.delete("/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const actor: Actor = { type: "human", id: "api" };
-    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id));
-    if (!current) return reply.code(404).send({ error: "not_found" });
+    const principal = await requirePrincipal(req, reply);
+    if (!principal) return;
+    const [current] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, id)).limit(1);
+    if (!current) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    if (principal.kind === "agent" && current.householdId !== principal.householdId) {
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+    }
+    if (principal.kind === "human") {
+      const { canAccessHousehold } = await import("../lib/principal.js");
+      if (!(await canAccessHousehold(principal, current.householdId))) {
+        return reply.code(404).send({ error: { code: "NOT_FOUND", message: "obligation not found" } });
+      }
+    }
     try {
       const next = transition(current.status as ObligationState, {
         from: current.status as ObligationState,
         to: "archived",
-        actor,
+        actor: actorOf(principal),
         reason: "manual",
       });
-      const [row] = await db
+      await db
         .update(schema.obligations)
         .set({ status: next, updatedAt: new Date() })
-        .where(eq(schema.obligations.id, id))
-        .returning();
-      return row;
+        .where(eq(schema.obligations.id, id));
+      await recordEvent({
+        householdId: current.householdId,
+        obligationId: id,
+        fromState: current.status,
+        toState: next,
+        principal,
+        reason: "manual",
+      });
+      return { ok: true, status: next };
     } catch (err) {
-      return reply.code(409).send({ error: "invalid_transition", message: (err as Error).message });
+      return reply.code(409).send({ error: { code: "INVALID_TRANSITION", message: (err as Error).message } });
     }
   });
 }

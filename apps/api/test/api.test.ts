@@ -37,7 +37,7 @@ describe("caste api", () => {
       payload: { householdId: "00000000-0000-4000-8000-999999999999", title: "Ghost" },
     });
     expect(missing.statusCode).toBe(404);
-    expect(missing.json().error).toBe("household_not_found");
+    expect(missing.json().error.code).toBe("NOT_FOUND");
 
     const created = await authed({
       method: "POST",
@@ -53,25 +53,51 @@ describe("caste api", () => {
     expect(list.json().length).toBeGreaterThan(0);
 
     const ok = await authed({
-      method: "PATCH",
-      url: `/api/obligations/${ob.id}`,
-      payload: { actorType: "human", actorId: "u1", status: "needs_review" },
+      method: "POST",
+      url: `/api/obligations/${ob.id}/transitions`,
+      payload: { to: "needs_review", reason: "manual" },
     });
     expect(ok.json().status).toBe("needs_review");
 
     const bad = await authed({
-      method: "PATCH",
-      url: `/api/obligations/${ob.id}`,
-      payload: { actorType: "human", actorId: "u1", status: "archived" },
+      method: "POST",
+      url: `/api/obligations/${ob.id}/transitions`,
+      payload: { to: "archived", reason: "manual" },
     });
     expect(bad.statusCode).toBe(409);
 
-    const agent = await authed({
-      method: "PATCH",
-      url: `/api/obligations/${ob.id}`,
-      payload: { actorType: "agent", actorId: "bot", status: "active" },
+    const active = await authed({
+      method: "POST",
+      url: `/api/obligations/${ob.id}/transitions`,
+      payload: { to: "active", reason: "manual" },
     });
-    expect(agent.statusCode).toBe(409);
+    expect(active.statusCode).toBe(200);
+
+    // A real agent (bearer token) may not push into terminal states.
+    const tok = await authed({
+      method: "POST",
+      url: "/api/agent/tokens",
+      payload: { name: "Hermes", householdId },
+    });
+    expect(tok.statusCode).toBe(201);
+    const bearer = tok.json().token as string;
+    const asAgent = (opts: Record<string, unknown>) =>
+      app.inject({ ...opts, headers: { authorization: `Bearer ${bearer}` } } as never);
+
+    const agentTerminal = await asAgent({
+      method: "POST",
+      url: `/api/obligations/${ob.id}/transitions`,
+      payload: { to: "archived", reason: "agent_action" },
+    });
+    expect(agentTerminal.statusCode).toBe(409);
+
+    // Agent may still act within its household: capture a new obligation.
+    const agentCreate = await asAgent({
+      method: "POST",
+      url: "/api/obligations",
+      payload: { householdId, title: "Renew passport" },
+    });
+    expect(agentCreate.statusCode).toBe(201);
   });
 
   it("extracts obligation from text", async () => {
