@@ -23,12 +23,15 @@ See `.env.example` for every variable; all integrations are optional.
 
 | Capability            | Status |
 | --------------------- | ------ |
-| Obligation state machine (13 states, guarded transitions) | ✅ `@caste/core`, 10 tests |
+| Obligation state machine (14 states, guarded transitions) | ✅ `@caste/core`, 10 tests |
 | Agent policy (never verifies; no action under review)     | ✅ enforced in core + API + MCP |
-| REST API (households, obligations, transitions)           | ✅ Fastify + Postgres, 3 tests |
-| Family board (create, capture, advance)                   | ✅ Next.js `/app` |
+| REST API (households, obligations, transitions, evidence) | ✅ Fastify + Postgres, 9 tests |
+| AI extraction providers (OpenAI/Anthropic + demo fallback) | ✅ `@caste/ai`, 12 tests |
+| MCP store (agent-token binding, obligations)              | ✅ `@caste/mcp`, 3 tests |
+| Family board (create, capture, advance, verify w/ evidence) | ✅ Next.js `/app` |
 | Agent integration (MCP stdio server)                      | ✅ `@caste/mcp`, 3 tools |
 | Demo seed (idempotent)                                    | ✅ `pnpm db:seed` |
+| CI (typecheck + tests on main and PRs)                    | ✅ green on GitHub Actions |
 
 ## Status: what works today
 
@@ -39,9 +42,8 @@ See `.env.example` for every variable; all integrations are optional.
   planned; the demo provider is deterministic and never hallucinates.
 - Docker: `docker compose -f infra/docker-compose.yml up --build` runs
   Postgres 15 + API + Web with schema push on boot.
-- CI: workflow exists at `.github/workflows/ci.yml` but cannot be pushed with
-  the current deploy token (lacks `workflow` scope). Enable locally with:
-  `gh auth refresh -s workflow` and re-commit the file.
+- CI: `.github/workflows/ci.yml` runs typecheck + the full vitest suite on
+  every push to `main` and every PR; it is green on GitHub Actions.
 
 ## Credential-gated features (code shipped, activates with keys)
 
@@ -61,12 +63,15 @@ Unconfigured features degrade honestly: `503` / `push_not_configured` /
 
 ```
 apps/
-  web/        Next.js 15 — marketing home + /app family board
-  api/        Fastify — /api/health, /api/households, /api/obligations (guarded transitions)
+  web/        Next.js 15 — marketing home + /app family board (verify w/ evidence)
+  api/        Fastify — auth, households, obligations, evidence, extract, ingest,
+              push, billing, agent tokens (all guarded transitions)
 packages/
-  core/       obligation domain: 13-state machine, confidence policy, dedupe, permissions
+  core/       obligation domain: 14-state machine, confidence policy, dedupe, permissions
+  ai/         extraction providers (OpenAI, Anthropic, deterministic demo fallback)
   mcp/        MCP server over stdio: caste_list_obligations / caste_capture / caste_advance
 docs/         ARCHITECTURE.md, AGENT_INTEGRATION.md
+infra/        docker-compose + Dockerfiles (db + api + web)
 scripts/      seed.ts — idempotent demo household
 ```
 
@@ -80,3 +85,5 @@ or act while an obligation is under review — the server rejects it with 409.
 
 Household is a hard authorization boundary. Obligation state transitions are validated
 by `@caste/core` on every write path (REST and MCP); illegal jumps return 409.
+Agent tokens are shown once and stored only as sha256 hashes; revocation is immediate.
+Cross-household access returns 404 (no enumeration), never 403.
